@@ -7,14 +7,14 @@ import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { theme } from '@/constants/theme';
 
 function RootNavigator() {
-  const { appUser, loading } = useAuth();
+  const { appUser, loading, appUserLoading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
   useEffect(() => {
-    if (loading) return;
+    // Wait until BOTH auth and appUser have loaded
+    if (loading || appUserLoading) return;
 
-    // Freeze duplicate redirects
     let redirected = false;
 
     const inAuthGroup =
@@ -23,7 +23,7 @@ function RootNavigator() {
       segments[0] === '(owner)' ||
       segments[0] === '(accountant)';
 
-    // 1. Not logged in && inside a protected group
+    // 1. Not logged in and trying to access a protected route
     if (!appUser && inAuthGroup) {
       if (!redirected) {
         redirected = true;
@@ -32,20 +32,25 @@ function RootNavigator() {
       return;
     }
 
+    // If still no user, don't redirect anywhere yet
     if (!appUser) return;
 
     const role = appUser.role;
     const requiresBiometric = appUser.requires_biometric;
 
-    // 2. Biometric lock flow
+    // 2. Biometric lock required
     if (requiresBiometric) {
-     const current = `/${segments.join('/')}`;
+      const current = `/${segments.join('/')}`;
 
       const needsUnlock =
         !segments.includes('biometric-unlock') &&
         !segments.includes('pin-unlock');
 
-      if (needsUnlock && current !== '/biometric-unlock' && current !== '/pin-unlock') {
+      if (
+        needsUnlock &&
+        current !== '/biometric-unlock' &&
+        current !== '/pin-unlock'
+      ) {
         if (!redirected) {
           redirected = true;
           router.replace('/biometric-unlock');
@@ -54,7 +59,7 @@ function RootNavigator() {
       }
     }
 
-    // 3. Role-based redirect (only redirect once)
+    // 3. Role-based redirect
     if (!redirected) {
       if (role === 'staff' && segments[0] !== '(staff)') {
         redirected = true;
@@ -73,10 +78,9 @@ function RootNavigator() {
         router.replace('/(accountant)');
       }
     }
-  }, [appUser, loading, segments]);
+  }, [appUser, loading, appUserLoading, segments]);
 
-
-  if (loading) {
+  if (loading || appUserLoading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={theme.colors.text.primary} />
@@ -88,6 +92,7 @@ function RootNavigator() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="role-selection" />
       <Stack.Screen name="login" />
+      <Stack.Screen name="register" />
       <Stack.Screen name="biometric-unlock" />
       <Stack.Screen name="pin-unlock" />
       <Stack.Screen name="(staff)" />
