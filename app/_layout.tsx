@@ -11,7 +11,7 @@ function RootNavigator() {
   const segments = useSegments();
   const router = useRouter();
 
- useEffect(() => {
+  useEffect(() => {
     if (loading) return;
 
     // Freeze duplicate redirects
