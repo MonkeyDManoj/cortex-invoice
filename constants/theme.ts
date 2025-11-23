@@ -1,0 +1,62 @@
+export const theme = {
+  colors: {
+    background: '#FFFFFF',
+    surface: '#F5F5F5',
+    surfaceLight: '#FAFAFA',
+    border: '#E0E0E0',
+    text: {
+      primary: '#212121',
+      secondary: '#757575',
+      tertiary: '#9E9E9E',
+      inverse: '#FFFFFF',
+    },
+    accents: {
+      ice: '#E3F2FD',
+      iceDark: '#90CAF9',
+      fire: '#FFEBEE',
+      fireDark: '#EF9A9A',
+      tree: '#E8F5E9',
+      treeDark: '#A5D6A7',
+      water: '#E0F7FA',
+      waterDark: '#80DEEA',
+      air: '#F3E5F5',
+      airDark: '#CE93D8',
+    },
+    status: {
+      success: '#4CAF50',
+      warning: '#FF9800',
+      error: '#F44336',
+      info: '#2196F3',
+    },
+  },
+  spacing: {
+    xs: 4,
+    sm: 8,
+    md: 16,
+    lg: 24,
+    xl: 32,
+    xxl: 48,
+  },
+  borderRadius: {
+    sm: 4,
+    md: 8,
+    lg: 12,
+    xl: 16,
+    round: 999,
+  },
+  typography: {
+    sizes: {
+      xs: 12,
+      sm: 14,
+      md: 16,
+      lg: 18,
+      xl: 24,
+      xxl: 32,
+    },
+    weights: {
+      regular: '400' as const,
+      medium: '500' as const,
+      bold: '700' as const,
+    },
+  },
+};
