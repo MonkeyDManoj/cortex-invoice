@@ -1,15 +1,21 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
-import { AppUser, UserRole, Database } from '@/types/database.types';
+import { AppUser, UserRole } from '@/types/database.types';
 
 interface AuthContextType {
   session: Session | null;
   user: User | null;
   appUser: AppUser | null;
   loading: boolean;
+  appUserLoading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, role: UserRole, fullName?: string) => Promise<void>;
+  signUp: (
+    email: string,
+    password: string,
+    role: UserRole,
+    fullName?: string
+  ) => Promise<void>;
   signOut: () => Promise<void>;
   refreshAppUser: () => Promise<void>;
 }
@@ -20,7 +26,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [appUser, setAppUser] = useState<AppUser | null>(null);
+
+  // THE FIX: separate loading flags for session + appUser
   const [loading, setLoading] = useState(true);
+  const [appUserLoading, setAppUserLoading] = useState(true);
 
   const fetchAppUser = async (userId: string) => {
     const { data, error } = await supabase
@@ -37,34 +46,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const refreshAppUser = async () => {
-    if (session?.user) {
-      const userData = await fetchAppUser(session.user.id);
-      setAppUser(userData);
-    }
+    if (!session?.user) return;
+
+    setAppUserLoading(true);
+    const userData = await fetchAppUser(session.user.id);
+    setAppUser(userData);
+    setAppUserLoading(false);
   };
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    // INITIAL SESSION LOAD
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
+
       if (session?.user) {
-        fetchAppUser(session.user.id).then(setAppUser);
+        const userData = await fetchAppUser(session.user.id);
+        setAppUser(userData);
       }
+
       setLoading(false);
+      setAppUserLoading(false);
     });
 
+    // AUTH STATE CHANGE LISTENER
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        (async () => {
-          setSession(session);
-          setUser(session?.user ?? null);
-          if (session?.user) {
-            const userData = await fetchAppUser(session.user.id);
-            setAppUser(userData);
-          } else {
-            setAppUser(null);
-          }
-        })();
+      async (_event, session) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+
+        if (session?.user) {
+          setAppUserLoading(true);
+          const userData = await fetchAppUser(session.user.id);
+          setAppUser(userData);
+          setAppUserLoading(false);
+        } else {
+          setAppUser(null);
+        }
       }
     );
 
@@ -85,6 +103,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     role: UserRole,
     fullName?: string
   ) => {
+    // Create auth user
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -107,9 +126,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const { error: profileError } = await supabase
       .from('app_users')
-      .insert(insertData as any);
+      .insert(insertData);
 
     if (profileError) throw profileError;
+
+    // Optional: auto-login after sign-up
+    await supabase.auth.signInWithPassword({ email, password });
   };
 
   const signOut = async () => {
@@ -124,6 +146,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user,
         appUser,
         loading,
+        appUserLoading,
         signIn,
         signUp,
         signOut,
@@ -137,7 +160,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (context === undefined) {
+  if (!context) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
