@@ -11,41 +11,70 @@ function RootNavigator() {
   const segments = useSegments();
   const router = useRouter();
 
-  useEffect(() => {
+ useEffect(() => {
     if (loading) return;
 
-    const inAuthGroup = segments[0] === '(staff)' ||
-                       segments[0] === '(manager)' ||
-                       segments[0] === '(owner)' ||
-                       segments[0] === '(accountant)';
+    // Freeze duplicate redirects
+    let redirected = false;
 
+    const inAuthGroup =
+      segments[0] === '(staff)' ||
+      segments[0] === '(manager)' ||
+      segments[0] === '(owner)' ||
+      segments[0] === '(accountant)';
+
+    // 1. Not logged in && inside a protected group
     if (!appUser && inAuthGroup) {
-      router.replace('/role-selection');
-    } else if (appUser) {
-      const role = appUser.role;
-      const requiresBiometric = appUser.requires_biometric;
-
-      if (requiresBiometric && !segments.includes('biometric-unlock') && !segments.includes('pin-unlock')) {
-        const currentPath = `/${segments.join('/')}`;
-        if (currentPath !== '/biometric-unlock' && currentPath !== '/pin-unlock') {
-          router.replace('/biometric-unlock');
-          return;
-        }
+      if (!redirected) {
+        redirected = true;
+        router.replace('/role-selection');
       }
+      return;
+    }
 
-      if (!requiresBiometric || segments.includes('biometric-unlock') || segments.includes('pin-unlock')) {
-        if (role === 'staff' && segments[0] !== '(staff)') {
-          router.replace('/(staff)');
-        } else if (role === 'manager' && segments[0] !== '(manager)') {
-          router.replace('/(manager)');
-        } else if (role === 'owner' && segments[0] !== '(owner)') {
-          router.replace('/(owner)');
-        } else if (role === 'accountant' && segments[0] !== '(accountant)') {
-          router.replace('/(accountant)');
+    if (!appUser) return;
+
+    const role = appUser.role;
+    const requiresBiometric = appUser.requires_biometric;
+
+    // 2. Biometric lock flow
+    if (requiresBiometric) {
+     const current = `/${segments.join('/')}`;
+
+      const needsUnlock =
+        !segments.includes('biometric-unlock') &&
+        !segments.includes('pin-unlock');
+
+      if (needsUnlock && current !== '/biometric-unlock' && current !== '/pin-unlock') {
+        if (!redirected) {
+          redirected = true;
+          router.replace('/biometric-unlock');
         }
+        return;
+      }
+    }
+
+    // 3. Role-based redirect (only redirect once)
+    if (!redirected) {
+      if (role === 'staff' && segments[0] !== '(staff)') {
+        redirected = true;
+        router.replace('/(staff)');
+      }
+      if (role === 'manager' && segments[0] !== '(manager)') {
+        redirected = true;
+        router.replace('/(manager)');
+      }
+      if (role === 'owner' && segments[0] !== '(owner)') {
+        redirected = true;
+        router.replace('/(owner)');
+      }
+      if (role === 'accountant' && segments[0] !== '(accountant)') {
+        redirected = true;
+        router.replace('/(accountant)');
       }
     }
   }, [appUser, loading, segments]);
+
 
   if (loading) {
     return (
