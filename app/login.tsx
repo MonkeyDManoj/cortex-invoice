@@ -145,6 +145,17 @@ export default function LoginScreen() {
             <Text style={styles.ssoButtonText}>Continue with SSO</Text>
             <Text style={styles.ssoSubtext}>Coming Soon</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+           onPress={() => router.push('/register')}
+           activeOpacity={0.7}
+           style={{ alignItems: 'center', marginTop: theme.spacing.lg }}
+          >
+          <Text style={{ fontSize: theme.typography.sizes.sm, color: theme.colors.text.secondary }}>
+           Don’t have an account?
+          <Text style={{ color: theme.colors.text.primary, fontWeight: '600' }}> Sign Up</Text>
+  </Text>
+</TouchableOpacity>
+
         </View>
       </ScrollView>
     </View>
