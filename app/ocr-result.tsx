@@ -335,6 +335,9 @@ const styles = StyleSheet.create({
   subtitle: {
     color: theme.colors.text.secondary,
   },
+  empty: {
+    padding: 16,
+  },
   input: {
     backgroundColor: theme.colors.surface,
     borderColor: theme.colors.border,
