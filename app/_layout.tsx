@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { useEffect, useRef } from 'react';
+import { Stack, useRouter, useSegments, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
@@ -9,76 +9,74 @@ import { theme } from '@/constants/theme';
 function RootNavigator() {
   const { appUser, loading, appUserLoading } = useAuth();
   const segments = useSegments();
+  const pathname = usePathname();
   const router = useRouter();
 
+  // Prevent repeat redirects (the real fix)
+  const lastRedirect = useRef<string | null>(null);
+
+  const safeRedirect = (path: string) => {
+    if (lastRedirect.current === path) return; // Prevent loops
+    lastRedirect.current = path;
+    router.replace(path);
+  };
+
   useEffect(() => {
-    // Wait until BOTH auth and appUser have loaded
     if (loading || appUserLoading) return;
 
-    let redirected = false;
+    // Always reset redirect memory on each new screen
+    lastRedirect.current = null;
 
-    const inAuthGroup =
+    const inRoleGroup =
       segments[0] === '(staff)' ||
       segments[0] === '(manager)' ||
       segments[0] === '(owner)' ||
       segments[0] === '(accountant)';
 
-    // 1. Not logged in and trying to access a protected route
-    if (!appUser && inAuthGroup) {
-      if (!redirected) {
-        redirected = true;
-        router.replace('/role-selection');
-      }
+    // ------------------------------------------------------------
+    // 1. NO USER LOGGED IN
+    // ------------------------------------------------------------
+    if (!appUser) {
+      if (inRoleGroup) safeRedirect('/role-selection');
       return;
     }
-
-    // If still no user, don't redirect anywhere yet
-    if (!appUser) return;
 
     const role = appUser.role;
     const requiresBiometric = appUser.requires_biometric;
 
-    // 2. Biometric lock required
+    // ------------------------------------------------------------
+    // 2. BIOMETRIC LOCK FIRST
+    // ALWAYS send user to biometric-unlock if required and not already there
+    // ------------------------------------------------------------
     if (requiresBiometric) {
-      const current = `/${segments.join('/')}`;
+      const isOnUnlock =
+        pathname === '/biometric-unlock' || pathname === '/pin-unlock';
 
-      const needsUnlock =
-        !segments.includes('biometric-unlock') &&
-        !segments.includes('pin-unlock');
-
-      if (
-        needsUnlock &&
-        current !== '/biometric-unlock' &&
-        current !== '/pin-unlock'
-      ) {
-        if (!redirected) {
-          redirected = true;
-          router.replace('/biometric-unlock');
-        }
+      if (!isOnUnlock) {
+        safeRedirect('/biometric-unlock');
         return;
       }
+
+      // If they are already on unlock screen, do nothing
+      if (isOnUnlock) return;
     }
 
-    // 3. Role-based redirect
-    if (!redirected) {
-      if (role === 'staff' && segments[0] !== '(staff)') {
-        redirected = true;
-        router.replace('/(staff)');
-      }
-      if (role === 'manager' && segments[0] !== '(manager)') {
-        redirected = true;
-        router.replace('/(manager)');
-      }
-      if (role === 'owner' && segments[0] !== '(owner)') {
-        redirected = true;
-        router.replace('/(owner)');
-      }
-      if (role === 'accountant' && segments[0] !== '(accountant)') {
-        redirected = true;
-        router.replace('/(accountant)');
-      }
+    // ------------------------------------------------------------
+    // 3. ROLE ROUTING (only AFTER biometric passes)
+    // ------------------------------------------------------------
+    const rolePathMap: Record<string, string> = {
+      staff: '/(staff)',
+      manager: '/(manager)',
+      owner: '/(owner)',
+      accountant: '/(accountant)',
+    };
+
+    const targetPath = rolePathMap[role];
+
+    if (!pathname.startsWith(targetPath)) {
+      safeRedirect(targetPath);
     }
-  }, [appUser, loading, appUserLoading, segments]);
+  }, [appUser, loading, appUserLoading, pathname, segments]);
 
   if (loading || appUserLoading) {
     return (
