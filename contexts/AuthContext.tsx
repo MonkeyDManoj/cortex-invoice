@@ -113,7 +113,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!data.user) throw new Error('User creation failed');
 
     const isAlwaysLoggedIn = role === 'staff';
-    const requiresBiometric = role === 'manager' || role === 'owner';
+    const requiresBiometric = false;
 
     const insertData = {
       id: data.user.id,
