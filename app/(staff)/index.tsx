@@ -1,19 +1,80 @@
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal } from 'react-native';
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useRouter } from 'expo-router';
 import { theme } from '@/constants/theme';
 import { Camera, Image as ImageIcon, Upload, LogOut } from 'lucide-react-native';
+import CameraCapture from '@/components/CameraCapture';
+import ProcessingScreen from '@/components/ProcessingScreen';
+import { pickImageFromGallery } from '@/services/imagePickerService';
+import { createInvoice, updateInvoiceWithWebhookResponse } from '@/services/invoiceService';
+import { sendImageToWebhook } from '@/services/webhookService';
 
 export default function StaffCaptureScreen() {
   const { appUser, signOut } = useAuth();
+  const router = useRouter();
   const [status, setStatus] = useState<string | null>(null);
+  const [showCamera, setShowCamera] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const [processingImageUri, setProcessingImageUri] = useState<string | null>(null);
 
   const handleCameraCapture = () => {
-    setStatus('Camera capture will be implemented in next phase');
+    setStatus(null);
+    setShowCamera(true);
   };
 
-  const handleGalleryPick = () => {
-    setStatus('Gallery picker will be implemented in next phase');
+  const handleGalleryPick = async () => {
+    setStatus(null);
+    try {
+      const imageUri = await pickImageFromGallery();
+      if (imageUri) {
+        await processInvoice(imageUri);
+      }
+    } catch (error: any) {
+      setStatus(error.message || 'Failed to pick image');
+    }
+  };
+
+  const handleImageCaptured = async (imageUri: string) => {
+    setShowCamera(false);
+    await processInvoice(imageUri);
+  };
+
+  const processInvoice = async (imageUri: string) => {
+    if (!appUser?.id) {
+      setStatus('User not authenticated');
+      return;
+    }
+
+    setProcessing(true);
+    setProcessingImageUri(imageUri);
+
+    try {
+      const invoice = await createInvoice(appUser.id, imageUri);
+      if (!invoice) {
+        throw new Error('Failed to create invoice record');
+      }
+
+      const webhookResponse = await sendImageToWebhook(imageUri);
+
+      await updateInvoiceWithWebhookResponse(
+        invoice.id,
+        webhookResponse,
+        webhookResponse.data
+      );
+
+      setProcessing(false);
+      setProcessingImageUri(null);
+
+      router.push({
+        pathname: '/(staff)/invoice-detail',
+        params: { invoiceId: invoice.id },
+      });
+    } catch (error: any) {
+      setProcessing(false);
+      setProcessingImageUri(null);
+      setStatus(error.message || 'Failed to process invoice');
+    }
   };
 
   const handleSignOut = async () => {
@@ -23,6 +84,10 @@ export default function StaffCaptureScreen() {
       setStatus(err.message || 'Sign out failed');
     }
   };
+
+  if (processing && processingImageUri) {
+    return <ProcessingScreen imageUri={processingImageUri} />;
+  }
 
   return (
     <View style={styles.container}>
@@ -82,6 +147,17 @@ export default function StaffCaptureScreen() {
           <Text style={styles.signOutText}>Sign out</Text>
         </TouchableOpacity>
       </View>
+
+      <Modal
+        visible={showCamera}
+        animationType="slide"
+        presentationStyle="fullScreen"
+      >
+        <CameraCapture
+          onCapture={handleImageCaptured}
+          onClose={() => setShowCamera(false)}
+        />
+      </Modal>
     </View>
   );
 }
