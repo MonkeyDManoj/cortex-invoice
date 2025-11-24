@@ -8,7 +8,6 @@ import {
   TextInput,
   Modal,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState, useEffect } from 'react';
@@ -34,6 +33,7 @@ import {
   Save,
   User,
 } from 'lucide-react-native';
+import DuplicateWarningModal from '@/components/DuplicateWarningModal';
 
 export default function ApprovalDetailScreen() {
   const router = useRouter();
@@ -55,6 +55,9 @@ export default function ApprovalDetailScreen() {
 
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectionComment, setRejectionComment] = useState('');
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+  const [duplicateOverrideReason, setDuplicateOverrideReason] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadInvoice();
@@ -97,7 +100,7 @@ export default function ApprovalDetailScreen() {
       setIsEditing(false);
       await loadInvoice();
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to save changes');
+      setError(error.message || 'Failed to save changes');
     } finally {
       setSaving(false);
     }
@@ -107,6 +110,7 @@ export default function ApprovalDetailScreen() {
     if (!invoiceId || !appUser) return;
 
     setSaving(true);
+    setError(null);
     try {
       await approveInvoice(
         invoiceId,
@@ -116,10 +120,42 @@ export default function ApprovalDetailScreen() {
       );
       router.back();
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to approve invoice');
+      if (error.duplicate) {
+        setSaving(false);
+        setShowDuplicateModal(true);
+      } else {
+        setError(error.message || 'Failed to approve invoice');
+        setSaving(false);
+      }
+    }
+  };
+
+  const handleDuplicateOverride = async (reason: string) => {
+    if (!invoiceId || !appUser) return;
+
+    setSaving(true);
+    setError(null);
+    try {
+      await approveInvoice(
+        invoiceId,
+        appUser.id,
+        appUser.full_name || appUser.email,
+        editedData,
+        true,
+        reason
+      );
+      setShowDuplicateModal(false);
+      router.back();
+    } catch (error: any) {
+      setError(error.message || 'Failed to approve invoice');
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleDuplicateCancel = () => {
+    setShowDuplicateModal(false);
+    setDuplicateOverrideReason('');
   };
 
   const handleReject = async () => {
@@ -141,7 +177,7 @@ export default function ApprovalDetailScreen() {
       setShowRejectModal(false);
       router.back();
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to reject invoice');
+      setError(error.message || 'Failed to reject invoice');
     } finally {
       setSaving(false);
     }
@@ -205,6 +241,12 @@ export default function ApprovalDetailScreen() {
           )}
         </TouchableOpacity>
       </View>
+
+      {error && (
+        <View style={styles.errorBanner}>
+          <Text style={styles.errorBannerText}>{error}</Text>
+        </View>
+      )}
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.imageSection}>
@@ -416,6 +458,13 @@ export default function ApprovalDetailScreen() {
           </View>
         </View>
       </Modal>
+
+      <DuplicateWarningModal
+        visible={showDuplicateModal}
+        onOverride={handleDuplicateOverride}
+        onCancel={handleDuplicateCancel}
+        loading={saving}
+      />
     </View>
   );
 }
@@ -674,5 +723,17 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.sizes.md,
     fontWeight: theme.typography.weights.bold,
     color: theme.colors.text.inverse,
+  },
+  errorBanner: {
+    backgroundColor: theme.colors.accents.fire,
+    paddingVertical: theme.spacing.md,
+    paddingHorizontal: theme.spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.status.error,
+  },
+  errorBannerText: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.status.error,
+    textAlign: 'center',
   },
 });

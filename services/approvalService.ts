@@ -32,6 +32,23 @@ export interface AuditLogEntry {
   created_at: string;
 }
 
+export interface DuplicateDetectionLog {
+  id: string;
+  invoice_id: string;
+  detected_at: string;
+  detected_by: string;
+  overridden: boolean;
+  overridden_by?: string;
+  overridden_at?: string;
+  override_reason?: string;
+  created_at: string;
+}
+
+export interface ApprovalWebhookResponse {
+  duplicate?: boolean;
+  [key: string]: any;
+}
+
 export const getPendingInvoices = async (): Promise<ApprovalInvoice[]> => {
   const { data, error } = await supabase
     .from('invoices')
@@ -105,8 +122,10 @@ export const approveInvoice = async (
   invoiceId: string,
   userId: string,
   userName: string,
-  ocrData?: any
-): Promise<void> => {
+  ocrData?: any,
+  overrideDuplicate?: boolean,
+  overrideReason?: string
+): Promise<ApprovalWebhookResponse> => {
   const updateData: any = {
     approval_status: 'approved',
     approved_by: userId,
@@ -134,7 +153,18 @@ export const approveInvoice = async (
     action: 'approved',
   });
 
-  await sendApprovalWebhook(invoiceId, 'approved', ocrData);
+  const webhookResponse = await sendApprovalWebhook(invoiceId, 'approved', ocrData);
+
+  if (webhookResponse.duplicate && !overrideDuplicate) {
+    await logDuplicateDetection(invoiceId, userId);
+    throw { duplicate: true, webhookResponse };
+  }
+
+  if (webhookResponse.duplicate && overrideDuplicate) {
+    await markDuplicateOverridden(invoiceId, userId, overrideReason);
+  }
+
+  return webhookResponse;
 };
 
 export const rejectInvoice = async (
@@ -213,12 +243,52 @@ export const getAuditLog = async (
   return data || [];
 };
 
+export const logDuplicateDetection = async (
+  invoiceId: string,
+  userId: string
+): Promise<void> => {
+  const { error } = await supabase.from('duplicate_detection_log').insert({
+    invoice_id: invoiceId,
+    detected_by: userId,
+    detected_at: new Date().toISOString(),
+  });
+
+  if (error) {
+    console.error('Error logging duplicate detection:', error);
+    throw error;
+  }
+};
+
+export const markDuplicateOverridden = async (
+  invoiceId: string,
+  userId: string,
+  reason?: string
+): Promise<void> => {
+  const { error } = await supabase
+    .from('duplicate_detection_log')
+    .update({
+      overridden: true,
+      overridden_by: userId,
+      overridden_at: new Date().toISOString(),
+      override_reason: reason,
+    })
+    .eq('invoice_id', invoiceId)
+    .eq('overridden', false)
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (error) {
+    console.error('Error marking duplicate as overridden:', error);
+    throw error;
+  }
+};
+
 const sendApprovalWebhook = async (
   invoiceId: string,
   action: 'approved' | 'rejected',
   ocrData?: any,
   comment?: string
-): Promise<void> => {
+): Promise<ApprovalWebhookResponse> => {
   const WEBHOOK_URL = 'https://webhook.site/your-webhook-id/approval-submit';
 
   try {
@@ -240,8 +310,13 @@ const sendApprovalWebhook = async (
 
     if (!response.ok) {
       console.error('Approval webhook failed:', response.status);
+      return { duplicate: false };
     }
+
+    const data = await response.json();
+    return data;
   } catch (error) {
     console.error('Error sending approval webhook:', error);
+    return { duplicate: false };
   }
 };
